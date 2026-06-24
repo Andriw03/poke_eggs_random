@@ -672,6 +672,100 @@
   }
 
   .counter-val.warn { color: var(--accent2); }
+
+  /* History panel */
+  .history-panel {
+    width: 100%;
+    background: var(--card);
+    border: var(--pixel) solid var(--border);
+    overflow: hidden;
+  }
+
+  .history-header {
+    background: var(--surface);
+    border-bottom: var(--pixel) solid var(--border);
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .history-title {
+    font-size: 8px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  .history-count {
+    font-size: 8px;
+    color: var(--accent);
+  }
+
+  .history-list {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 180px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .history-entry {
+    display: grid;
+    grid-template-columns: 28px 1fr auto;
+    gap: 8px;
+    align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    font-size: 7px;
+  }
+
+  .h-id { color: var(--muted); text-align: right; }
+  .h-result { color: var(--accent); letter-spacing: 1px; }
+  .h-date { color: var(--muted); font-family: 'VT323', monospace; font-size: 13px; text-align: right; }
+
+  .h-empty {
+    font-size: 7px;
+    color: var(--muted);
+    text-align: center;
+    padding: 16px;
+    letter-spacing: 1px;
+  }
+
+  /* Export / Import buttons */
+  .btn-io {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .btn-export {
+    background: transparent;
+    color: var(--blue);
+    font-size: 7px;
+    border: 1px solid rgba(61,107,181,0.4);
+    padding: 7px 14px;
+    clip-path: none;
+    box-shadow: none;
+  }
+
+  .btn-export:hover { border-color: var(--blue); background: rgba(61,107,181,0.1); }
+
+  .btn-import {
+    background: transparent;
+    color: var(--muted);
+    font-size: 7px;
+    border: 1px solid var(--border);
+    padding: 7px 14px;
+    clip-path: none;
+    box-shadow: none;
+  }
+
+  .btn-import:hover { border-color: var(--muted); }
 </style>
 </head>
 <body>
@@ -769,6 +863,17 @@
     </div>
   </div>
 
+  <!-- History panel -->
+  <div class="history-panel">
+    <div class="history-header">
+      <span class="history-title">📋 HISTORIAL DE TIRADAS</span>
+      <span class="history-count" id="historyCount">0 tiradas</span>
+    </div>
+    <div class="history-list" id="historyList">
+      <div class="h-empty">Sin registros aún</div>
+    </div>
+  </div>
+
   <!-- Status -->
   <div class="status-text" id="statusText">Presiona el botón para sortear una caja</div>
 
@@ -783,6 +888,13 @@
     <button class="btn btn-reset" id="btnReset" onclick="resetAll()">
       ↺ NUEVA RONDA
     </button>
+    <div class="btn-io">
+      <button class="btn btn-export" onclick="exportJSON()">📥 EXPORTAR JSON</button>
+      <label class="btn btn-import" style="cursor:pointer">
+        📤 IMPORTAR JSON
+        <input type="file" accept=".json" style="display:none" onchange="importJSON(event)">
+      </label>
+    </div>
     <button class="btn btn-danger" onclick="clearHistory()">
       🗑 BORRAR HISTORIAL
     </button>
@@ -803,6 +915,7 @@
   const GRID_ROWS = 5;
   const TOTAL_SLOTS = TOTAL_BOXES * GRID_ROWS * GRID_COLS;
   const STORAGE_KEY = 'pokemon_egg_slots_v1';
+  const HISTORY_KEY  = 'pokemon_egg_history_v1';
 
   // ── LocalStorage helpers ──────────────────────────────────────────────────
 
@@ -818,12 +931,112 @@
 
   let usedSlots = loadUsedSlots();
 
+  // ── History (JSON database) ───────────────────────────────────────────────
+
+  function loadHistory() {
+    try {
+      return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+    } catch { return []; }
+  }
+
+  function saveHistory() {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(rollHistory));
+  }
+
+  let rollHistory = loadHistory();
+
+  function addToHistory(box, row, col) {
+    const now = new Date();
+    rollHistory.push({
+      id: rollHistory.length + 1,
+      date: now.toLocaleDateString('es-ES'),
+      time: now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      box,
+      row,
+      col,
+      position: `${COLS[col]}${ROWS[row]}`
+    });
+    saveHistory();
+    renderHistory();
+  }
+
+  function renderHistory() {
+    const list  = document.getElementById('historyList');
+    const count = document.getElementById('historyCount');
+    count.textContent = `${rollHistory.length} tirada${rollHistory.length !== 1 ? 's' : ''}`;
+    if (rollHistory.length === 0) {
+      list.innerHTML = '<div class="h-empty">Sin registros aún</div>';
+      return;
+    }
+    list.innerHTML = rollHistory.slice().reverse().slice(0, 30).map(e =>
+      `<div class="history-entry">
+        <span class="h-id">#${e.id}</span>
+        <span class="h-result">Caja ${String(e.box).padStart(2,'0')} → ${e.position}</span>
+        <span class="h-date">${e.date} ${e.time}</span>
+      </div>`
+    ).join('');
+  }
+
+  // ── Export / Import JSON ──────────────────────────────────────────────────
+
+  function exportJSON() {
+    const data = {
+      version: 1,
+      exportDate: new Date().toISOString(),
+      totalRolls: rollHistory.length,
+      obtainedCount: usedSlots.size,
+      usedSlots: [...usedSlots],
+      rolls: rollHistory
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `poke_eggs_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importJSON(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (!data.version || !Array.isArray(data.rolls) || !Array.isArray(data.usedSlots)) {
+          alert('Archivo no válido: formato incorrecto.');
+          return;
+        }
+        if (!confirm(`Importar ${data.rolls.length} tiradas y ${data.usedSlots.length} slots usados?\nEsto reemplazará el historial actual.`)) return;
+
+        rollHistory = data.rolls;
+        saveHistory();
+
+        usedSlots = new Set(data.usedSlots);
+        saveUsedSlots();
+
+        state.rollCount = rollHistory.length;
+        document.getElementById('rollCount').textContent = state.rollCount;
+
+        updateCounters();
+        renderHistory();
+        resetAll();
+      } catch {
+        alert('Error al leer el archivo JSON.');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  }
+
   function slotKey(box, row, col) { return `${box}-${row}-${col}`; }
   function isSlotUsed(box, row, col) { return usedSlots.has(slotKey(box, row, col)); }
 
   function markSlotUsed(box, row, col) {
     usedSlots.add(slotKey(box, row, col));
     saveUsedSlots();
+    addToHistory(box, row, col);
   }
 
   // ── Available slot queries ────────────────────────────────────────────────
@@ -1105,7 +1318,10 @@
     if (!confirm('¿Borrar todo el historial de huevos obtenidos?\nTodos los slots volverán a estar disponibles.')) return;
     usedSlots.clear();
     saveUsedSlots();
+    rollHistory = [];
+    saveHistory();
     updateCounters();
+    renderHistory();
     resetAll();
   }
 
@@ -1132,6 +1348,7 @@
   // ── Init ──────────────────────────────────────────────────────────────────
   buildGrid();
   updateCounters();
+  renderHistory();
 </script>
 </body>
 </html>
