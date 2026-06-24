@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pokémon Egg Randomizer</title>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323:wght@400&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <style>
   :root {
     --bg: #0a0a12;
@@ -766,6 +768,29 @@
   }
 
   .btn-import:hover { border-color: var(--muted); }
+
+  /* Sync indicator */
+  .sync-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 7px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  .sync-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+    transition: background 0.4s, box-shadow 0.4s;
+  }
+
+  .sync-dot.online  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .sync-dot.offline { background: var(--accent2); }
 </style>
 </head>
 <body>
@@ -783,6 +808,10 @@
       <div class="pokeball-deco" style="animation-direction: reverse;"></div>
     </div>
     <p class="header-sub">PC BOX EDITION · 20 CAJAS · 30 HUEVOS C/U</p>
+    <div class="sync-bar">
+      <div class="sync-dot" id="syncDot"></div>
+      <span id="syncLabel">Conectando...</span>
+    </div>
   </div>
 
   <!-- Step indicator -->
@@ -902,7 +931,7 @@
 
   <div class="footer">
     Formato: Huevos Aleatorios · 20 Cajas × 6 Columnas × 5 Filas = 600 Huevos<br>
-    🐣 = posición ya obtenida · historial guardado localmente en el navegador
+    🐣 = posición ya obtenida · historial sincronizado en tiempo real con Firebase
   </div>
 
 </div>
@@ -914,36 +943,37 @@
   const GRID_COLS = 6;
   const GRID_ROWS = 5;
   const TOTAL_SLOTS = TOTAL_BOXES * GRID_ROWS * GRID_COLS;
-  const STORAGE_KEY = 'pokemon_egg_slots_v1';
-  const HISTORY_KEY  = 'pokemon_egg_history_v1';
+  // ── Firebase ──────────────────────────────────────────────────────────────
 
-  // ── LocalStorage helpers ──────────────────────────────────────────────────
+  const firebaseConfig = {
+    apiKey: "AIzaSyApIuukUnqrw2lpA6D5zdSBv4JChaauEaQ",
+    authDomain: "poke-eggs-random.firebaseapp.com",
+    databaseURL: "https://poke-eggs-random-default-rtdb.firebaseio.com",
+    projectId: "poke-eggs-random",
+    storageBucket: "poke-eggs-random.firebasestorage.app",
+    messagingSenderId: "1049194433142",
+    appId: "1:1049194433142:web:9d37f0b4f319f71020ed57"
+  };
 
-  function loadUsedSlots() {
-    try {
-      return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'));
-    } catch { return new Set(); }
+  firebase.initializeApp(firebaseConfig);
+  const db    = firebase.database();
+  const dbRef = db.ref('poke_eggs_random');
+
+  function toArray(val) {
+    if (!val) return [];
+    return Array.isArray(val) ? val : Object.values(val);
   }
 
   function saveUsedSlots() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...usedSlots]));
-  }
-
-  let usedSlots = loadUsedSlots();
-
-  // ── History (JSON database) ───────────────────────────────────────────────
-
-  function loadHistory() {
-    try {
-      return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
-    } catch { return []; }
+    dbRef.child('usedSlots').set(usedSlots.size > 0 ? [...usedSlots] : null);
   }
 
   function saveHistory() {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(rollHistory));
+    dbRef.child('rolls').set(rollHistory.length > 0 ? rollHistory : null);
   }
 
-  let rollHistory = loadHistory();
+  let usedSlots   = new Set();
+  let rollHistory = [];
 
   function addToHistory(box, row, col) {
     const now = new Date();
@@ -1010,17 +1040,10 @@
         }
         if (!confirm(`Importar ${data.rolls.length} tiradas y ${data.usedSlots.length} slots usados?\nEsto reemplazará el historial actual.`)) return;
 
-        rollHistory = data.rolls;
-        saveHistory();
-
-        usedSlots = new Set(data.usedSlots);
-        saveUsedSlots();
-
-        state.rollCount = rollHistory.length;
-        document.getElementById('rollCount').textContent = state.rollCount;
-
-        updateCounters();
-        renderHistory();
+        dbRef.set({
+          usedSlots: data.usedSlots.length > 0 ? data.usedSlots : null,
+          rolls:     data.rolls.length > 0 ? data.rolls : null
+        });
         resetAll();
       } catch {
         alert('Error al leer el archivo JSON.');
@@ -1316,10 +1339,9 @@
 
   function clearHistory() {
     if (!confirm('¿Borrar todo el historial de huevos obtenidos?\nTodos los slots volverán a estar disponibles.')) return;
-    usedSlots.clear();
-    saveUsedSlots();
+    usedSlots   = new Set();
     rollHistory = [];
-    saveHistory();
+    dbRef.set(null);
     updateCounters();
     renderHistory();
     resetAll();
@@ -1345,10 +1367,35 @@
     }
   }
 
+  // ── Firebase real-time sync ───────────────────────────────────────────────
+
+  dbRef.on('value', (snapshot) => {
+    const data  = snapshot.val() || {};
+    usedSlots   = new Set(toArray(data.usedSlots));
+    rollHistory = toArray(data.rolls);
+
+    state.rollCount = rollHistory.length;
+    document.getElementById('rollCount').textContent = state.rollCount;
+
+    updateCounters();
+    renderHistory();
+
+    if (!state.isAnimating) {
+      if (state.selectedBox != null) updateGridForBox(state.selectedBox);
+      else buildGrid();
+    }
+  });
+
+  db.ref('.info/connected').on('value', (snap) => {
+    const online = snap.val() === true;
+    const dot    = document.getElementById('syncDot');
+    const label  = document.getElementById('syncLabel');
+    dot.className     = 'sync-dot ' + (online ? 'online' : 'offline');
+    label.textContent = online ? 'Sincronizado · Firebase' : 'Sin conexión';
+  });
+
   // ── Init ──────────────────────────────────────────────────────────────────
-  buildGrid();
-  updateCounters();
-  renderHistory();
+  buildGrid(); // muestra la grilla de inmediato; onValue pobla los datos
 </script>
 </body>
 </html>
