@@ -807,7 +807,7 @@
       <h1>🥚 EGG<br>RANDOMIZER</h1>
       <div class="pokeball-deco" style="animation-direction: reverse;"></div>
     </div>
-    <p class="header-sub">PC BOX EDITION · 20 CAJAS · 30 HUEVOS C/U</p>
+    <p class="header-sub">PC BOX EDITION · 5 CAJAS · 30 HUEVOS C/U</p>
     <div class="sync-bar">
       <div class="sync-dot" id="syncDot"></div>
       <span id="syncLabel">Conectando...</span>
@@ -827,7 +827,7 @@
   <div class="pc-display" style="width:100%">
     <div class="pc-header">
       <div class="pc-title">PC DE BILL</div>
-      <div class="box-counter" id="boxCounter">CAJA ? / 20</div>
+      <div class="box-counter" id="boxCounter">CAJA ? / 5</div>
     </div>
     <div class="pc-content">
 
@@ -884,7 +884,7 @@
     </div>
     <div class="counter-item">
       <span class="result-label">Disponibles</span>
-      <span class="counter-val" id="remainingCount">600</span>
+      <span class="counter-val" id="remainingCount">150</span>
     </div>
     <div class="counter-item">
       <span class="result-label">Pokémon obtenidos</span>
@@ -930,7 +930,7 @@
   </div>
 
   <div class="footer">
-    Formato: Huevos Aleatorios · 20 Cajas × 6 Columnas × 5 Filas = 600 Huevos<br>
+    Formato: Huevos Aleatorios · 5 Cajas × 6 Columnas × 5 Filas = 150 Huevos<br>
     🐣 = posición ya obtenida · historial sincronizado en tiempo real con Firebase
   </div>
 
@@ -939,7 +939,7 @@
 <script>
   const COLS = ['A','B','C','D','E','F'];
   const ROWS = [1,2,3,4,5];
-  const TOTAL_BOXES = 7;
+  const TOTAL_BOXES = 5;
   const GRID_COLS = 6;
   const GRID_ROWS = 5;
   const TOTAL_SLOTS = TOTAL_BOXES * GRID_ROWS * GRID_COLS;
@@ -1165,7 +1165,7 @@
 
     const availableBoxes = getAvailableBoxes();
     if (availableBoxes.length === 0) {
-      document.getElementById('statusText').textContent = '¡Todos los 600 huevos han sido obtenidos! 🏆';
+      document.getElementById('statusText').textContent = `¡Todos los ${TOTAL_SLOTS} huevos han sido obtenidos! 🏆`;
       document.getElementById('statusText').classList.add('highlight');
       document.getElementById('btnBox').disabled = true;
       return;
@@ -1198,7 +1198,7 @@
       boxEl,
       `CAJA ${box.toString().padStart(2, '0')}`,
       1200,
-      () => `CAJA ${(Math.floor(Math.random() * 20) + 1).toString().padStart(2, '0')}`,
+      () => `CAJA ${(Math.floor(Math.random() * TOTAL_BOXES) + 1).toString().padStart(2, '0')}`,
       () => {
         document.getElementById('boxCounter').textContent = `CAJA ${box} / 20`;
         document.getElementById('boxName').textContent = `✦ CAJA ${box.toString().padStart(2,'0')} ✦`;
@@ -1321,7 +1321,7 @@
     document.getElementById('resultPosSub').textContent = 'Esperando...';
     document.getElementById('cardBox').classList.remove('active', 'step-box');
     document.getElementById('cardPos').classList.remove('active', 'step-pos');
-    document.getElementById('boxCounter').textContent = 'CAJA ? / 20';
+    document.getElementById('boxCounter').textContent = `CAJA ? / ${TOTAL_BOXES}`;
     document.getElementById('boxName').textContent = '???';
     document.getElementById('statusText').textContent = 'Presiona el botón para sortear una caja';
     document.getElementById('statusText').classList.remove('highlight');
